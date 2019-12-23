@@ -203,8 +203,30 @@ time blastn \
 now going to port these off the server for some RStudio fiddling + (manually?) making
 the presence/absence table
 
+tomorrow - sort out reciprocal best blast and reach out to rory
 
+## 23/12/2019
 
+porting reciprocal best blast outputs *and* gffs to local computer
+
+should probably create filtered gffs only containing contigs with hits to reduce
+the amt of space they take up
+
+first, unzipping:
+
+```bash
+for spec in Chlamydomonas_incerta Chlamydomonas_schloesseri Edaphochlamys_debaryana; do
+    gunzip -c -d rory-data/${spec}.braker2.gff3.gz > rory-data/${spec}.braker2.gff3;
+done
+```
+
+going to just keep gene records, actually -
+
+```bash
+grep 'gene' rory-data/Chlamydomonas_incerta.braker2.gff3 > data/references/Chlamydomonas_incerta.genes.gff3
+grep 'gene' rory-data/Chlamydomonas_schloesseri.braker2.gff3 > data/references/Chlamydomonas_schloesseri.genes.gff3
+grep 'gene' rory-data/Edaphochlamys_debaryana.braker2.gff3 > data/references/Edaphochlamys_debaryana.genes.gff3
+```
 
 
 
