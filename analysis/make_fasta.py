@@ -29,7 +29,7 @@ def args():
 
 def get_coords(gff):
     with open(gff, 'r') as f:
-        gff_all = [line.split() for line in f if 'gene' in line]
+        gff_all = [line.split() for line in f if 'gene' in line and not 'CDS' in line]
     fwd_coords = [l for l in gff_all if l[6] == '+']
     rev_coords = [l for l in gff_all if l[6] == '-']
     # format - god this is ugly
