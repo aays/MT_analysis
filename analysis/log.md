@@ -228,8 +228,217 @@ grep 'gene' rory-data/Chlamydomonas_schloesseri.braker2.gff3 > data/references/C
 grep 'gene' rory-data/Edaphochlamys_debaryana.braker2.gff3 > data/references/Edaphochlamys_debaryana.genes.gff3
 ```
 
+also - if checking reinhardtii genes against contigs - use tblastx instead of blastn! will
+translate both query + subject contigs in all six frames
 
+running tblastx for genome hits - 
 
+```bash
+time tblastx \
+-query data/fastas-nuc/fastas-all.fa \
+-subject rory-data/Chlamydomonas_incerta.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-out data/scaffold-mapping/C_incerta_scaffold_hits.tsv
+```
+
+took 21 min - queueing up for other two species
+
+## 25/12/2019
+
+do we see the same broken CDS problem in the MT+ annotation?
+(which should be better than the MT- ones on paper)
+
+```bash
+grep 'chromosome_6' /scratch/research/references/chlamydomonas/5.3_chlamy_w_organelles_mt_minus/annotation/concatenated_GFF/final.strict.GFF3 > chr6.gff
+```
+
+the coordinates for MT+ on chr6 were 298298-826737 (294645-826768 
+technically it seems, given that those values overlap genes otherwise)
+
+some quick awk filtering
+
+```bash
+awk -F '\t' '{ if(($4 >= 294645 && $5 <= 826768)) { print }}' data/references/chr6.gff > data/references/mtPlus.gff
+
+getting only genes and CDS:
+
+grep 'gene\|CDS' data/references/mtPlus.gff > data/references/mtPlus_genes.gff
+```
+
+## 28/12/2019
+
+edit: forget the above - let's use Rob's already-extracted-and-named CDSs for this
+
+getting Rob's fastas and the name translation dict:
+
+```bash
+cp -v /scratch/research/projects/chlamydomonas/mt_locus_recombination/analysis/cds-popgen/find_shared_genes/*CDS.fasta data/fastas-nuc
+
+cp -v /scratch/research/projects/chlamydomonas/mt_locus_recombination/analysis/cds-popgen/find_shared_genes/*NameTranslation.txt data/
+```
+
+two data prep things to do here:
+- convert fasta headers to gene names using NameTranslation dicts
+- translate fastas from `fastas-nuc` into protein seqs in `fastas`
+
+missing tab between column names in `NameTranslation` - needed a quick fix in python - same
+goes for mtLimited name translation
+
+code was messy but looks something like this:
+
+```python
+>>> with open('fastas-nuc/mtMinus_CDS_named.fasta', 'w') as f:
+  2     for record in d_minus:
+  3         outname = record.id
+  4         for item in name_dict:
+  5             if not 'alternate_ID' in item.keys():
+  6                 if record.id == item['ch6_Ness_ID']:
+  7                     outname = item['Common_Name']
+  8                     break
+  9                 elif record.id == item['mtMinus_Ness_ID']:
+ 10                     outname = item['Common_Name']
+ 11                     break
+ 12             else:
+ 13                 if record.id == item['alternate_ID']:
+ 14                     outname = item['Common_Name']
+ 15         if outname == record.id:
+ 16             print('wtf', record.id)
+ 17         f.write('>' + outname + '\n')
+ 18         f.write(str(record.seq) + '\n')
+```
+
+in short - replaced gene name with common name where there was one - otherwise,
+retained alternate ID
+
+now for translation:
+
+```python
+>>> from Bio import SeqIO
+>>> from tqdm import tqdm
+>>> d_plus = [s for s in SeqIO.parse('fastas-nuc/mtPlus_CDS_named.fasta', 'fasta')]
+>>> d_minus = [s for s in SeqIO.parse('fastas-nuc/mtMinus_CDS_named.fasta', 'fasta')]
+>>> with open('fastas/mtPlus_proteins.fasta', 'w') as f:
+  2     for record in tqdm(d_plus):
+  3         assert len(str(record.seq)) % 3 == 0
+  4         f.write('>' + record.id + '\n')
+  5         translated = str(record.seq.translate())
+  6         f.write(translated + '\n')
+100%|████████████████████████████████████████████████████████████████████████████| 114/114 [00:00<00:00, 2042.50it/s]
+>>> with open('fastas/mtMinus_proteins.fasta', 'w') as f:
+  2     for record in tqdm(d_minus):
+  3         assert len(str(record.seq)) % 3 == 0
+  4         f.write('>' + record.id + '\n')
+  5         translated = str(record.seq.translate())
+  6         f.write(translated + '\n')
+100%|██████████████████████████████████████████████████████████████████████████████| 41/41 [00:00<00:00, 2258.02it/s]
+>>> [r for r in d_plus if not str(r.seq.translate())[-1] == '*']
+[]
+>>> [r for r in d_minus if not str(r.seq.translate())[-1] == '*']
+[]
+```
+
+seems all translated fine, and have stop codons at the end as expected - nice! 
+
+back to blasting:
+1. blastp - reinhardtii proteins vs other species proteins
+    - reciprocal for all three species
+2. tblastn - reinhardtii proteins vs other species genomes
+
+blastp for orthology:
+
+```bash
+mkdir -p data/blastp
+
+# 'forward' - species query, reinhardtii subject
+time blastp \
+-query rory-data/Chlamydomonas_incerta.braker2.protein.fa \
+-subject data/fastas/mtMinus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_incerta_fwd.tsv
+
+time blastp \
+-query rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-subject data/fastas/mtMinus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_schloesseri_fwd.tsv
+
+time blastp \
+-query rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-subject data/fastas/mtMinus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_schloesseri_fwd.tsv
+# these three took 6 min each
+
+# 'reverse' - reinhardtii query, species subject
+time blastp \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Chlamydomonas_incerta.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_incerta_rev.tsv
+
+time blastp \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_schloesseri_rev.tsv
+
+time blastp \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/blastp/C_schloesseri_rev.tsv
+
+```
+
+after that, tblastn for gene content/synteny:
+
+```bash
+mkdir -p data/scaffold-mapping
+
+time tblastn \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Chlamydomonas_incerta.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/scaffold-mapping/C_incerta_scaffold_hits.tsv
+
+time tblastn \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/scaffold-mapping/C_schloesseri_scaffold_hits.tsv
+
+time tblastn \
+-query data/fastas/mtMinus_proteins.fasta \
+-subject rory-data/Edaphochlamys_debaryana.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/scaffold-mapping/E_debaryana_scaffold_hits.tsv
+# each takes about a minute to a minute 15
+```
 
 
 
