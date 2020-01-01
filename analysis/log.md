@@ -440,6 +440,154 @@ time tblastn \
 # each takes about a minute to a minute 15
 ```
 
+blasting w/ the plus proteins just to be sure that only shared genes show up:
 
+```bash
+time blastp \
+-query rory-data/Chlamydomonas_incerta.braker2.protein.fa \
+-subject data/fastas/mtPlus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_incerta_fwd.tsv
 
+time blastp \
+-query rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-subject data/fastas/mtPlus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_schloesseri_fwd.tsv
+
+time blastp \
+-query rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-subject data/fastas/mtPlus_proteins.fasta \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_schloesseri_fwd.tsv
+
+# 'reverse' - reinhardtii query, species subject
+time blastp \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Chlamydomonas_incerta.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_incerta_rev.tsv
+
+time blastp \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_schloesseri_rev.tsv
+
+time blastp \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+-outfmt 6 \
+-evalue 1e-10 \
+-num_alignments 1 \
+-max_hsps 1 \
+-out data/plus-test/C_schloesseri_rev.tsv
+
+# tblastn against the species genomes
+time tblastn \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Chlamydomonas_incerta.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/plus-test/C_incerta_scaffold_hits.tsv
+
+time tblastn \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Chlamydomonas_schloesseri.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/plus-test/C_schloesseri_scaffold_hits.tsv
+
+time tblastn \
+-query data/fastas/mtPlus_proteins.fasta \
+-subject rory-data/Edaphochlamys_debaryana.nuclear.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/plus-test/E_debaryana_scaffold_hits.tsv
+```
+
+## 1/1/2020
+
+next up - blasting predicted genes in the three unicells against the chlamy genome
+
+primarily testing for translocations + genes that are not in chlamy but are in any or
+all of these species
+
+will be using protein sequences + tblastn again - though should probably
+stick to genes that are on the contigs with hits in the reciprocal blast + tblastn
+
+for incerta -
+- C0033 (main)
+- C0003 (just one gene - HDH1)
+
+for schloesseri -
+- C0045 (main)
+- C0001 (97782)
+- C0009 (PDK1)
+- C0051 (SPP1C)
+
+for debaryana -
+- C0116 (most common)
+- C0043 (second most common)
+- C0001
+- C0100
+- C0077
+- C0081
+- C0012
+- C0087
+- C0125
+- C0045
+
+```bash
+grep -e 'C00[03]3' rory-data/Chlamydomonas_incerta.braker2.gff3 > rory-data/Chlamydomonas_incerta.braker2.gff3.filtered
+grep -e 'gene\|CDS' rory-data/Chlamydomonas_incerta.braker2.gff3.filtered | sponge rory-data/Chlamydomonas_incerta.braker2.gff3.filtered
+
+awk -F '\t' '{ if($1 ~ /C0045|C0001|C0009|C0051/ ) { print } }' rory-data/Chlamydomonas_schloesseri.braker2.gff3
+grep -e 'gene\|CDS' rory-data/Chlamydomonas_schloesseri.braker2.gff3.filtered | sponge rory-data/Chlamydomonas_schloesseri.braker2.gff3.filtered
+```
+
+debaryana has too many contigs for me to do this in awk over a crappy server connection - python it is
+
+```python
+>>> fname = 'rory-data/Edaphochlamys_debaryana.braker2.gff3'
+>>> contigs = ['C0116', 'C0043', 'C0001', 'C0100', 'C0077', 'C0081', 'C0012', 'C0087', 'C0125', 'C0045']
+>>> from tqdm import tqdm
+  2 with open(fname + '.filtered', 'w') as f_out:
+  3     with open(fname, 'r') as f_in:
+  4         for line in tqdm(f_in):
+  5             if not line.startswith('##'):
+  6                 sp = line.split('\t')
+  7                 contig, feature = sp[0], sp[2]
+  8                 if contig in contigs and feature in ['gene', 'CDS']:
+  9                     f_out.write(line)
+815210it [00:01, 508896.67it/s]
+```
+
+starting with incerta, since it's probably simplest
+
+need to make a filtered protein fasta with just proteins from these contigs
+
+calling it a day for now, but read in contigs + gene names,
+iterate through proteins w/ SeqIO, and if protein name in gff then print to new fasta
+
+could probably write an actual generalized script for this and then run across all 
+three species instead of coding this into the console every time
 
