@@ -591,3 +591,80 @@ iterate through proteins w/ SeqIO, and if protein name in gff then print to new 
 could probably write an actual generalized script for this and then run across all 
 three species instead of coding this into the console every time
 
+## 2/1/2019
+
+attempting a python script to create these filtered fastas:
+
+```bash
+time python3.5 analysis/make_filtered_fasta.py \
+--fasta rory-data/Chlamydomonas_incerta.braker2.protein.fa \
+--gff rory-data/Chlamydomonas_incerta.braker2.gff3.filtered \
+--outfile data/fastas/C_incerta.contigs.protein.fa
+```
+
+looks good - filtered down to 854 genes from 16957
+
+repeating for other two species
+
+```bash
+time python3.5 analysis/make_filtered_fasta.py \
+--fasta rory-data/Chlamydomonas_schloesseri.braker2.protein.fa \
+--gff rory-data/Chlamydomonas_schloesseri.braker2.gff3.filtered \
+--outfile data/fastas/C_schloesseri.contigs.protein.fa
+# 1553 genes left, from 16268
+
+time python3.5 analysis/make_filtered_fasta.py \
+--fasta rory-data/Edaphochlamys_debaryana.braker2.protein.fa \
+--gff rory-data/Edaphochlamys_debaryana.braker2.gff3.filtered \
+--outfile data/fastas/E_debaryana.contigs.protein.fa
+# 1804 genes left, from 20450
+```
+
+next up - tblastn these proteins against the chlamy genome
+
+```
+time tblastn \
+-query data/fastas/C_incerta.contigs.protein.fa \
+-subject data/references/chlamy.5.3.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/reinhardtii-tblastn/C_incerta_hits.tsv
+
+time tblastn \
+-query data/fastas/C_schloesseri.contigs.protein.fa \
+-subject data/references/chlamy.5.3.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/reinhardtii-tblastn/C_schloesseri_hits.tsv
+
+time tblastn \
+-query data/fastas/E_debaryana.contigs.protein.fa \
+-subject data/references/chlamy.5.3.fa \
+-outfmt 6 \
+-evalue 0.01 \
+-max_target_seqs 1 \
+-out data/reinhardtii-tblastn/E_debaryana_hits.tsv
+```
+
+## 5/1/2020
+
+took between 40m-2h, with debaryana taking the longest
+
+at a glance, seems there are hits all over the genome -
+many hits seem concentrated in chrs 6 (outside the MT locus
+coords) and chromosomes 13-14
+
+need to download these files and have a look in an Rmd,
+though I think it might be good to filter out contigs
+where only one gene had a hit in the original reciprocal best
+blast/tblastn and focus on the likely candidates for MT loci
+(eg C0033 in incerta)
+
+## 16/1/2020
+
+alright, back on this
+
+bringing the three files above offline to analyze in an Rmd
+
