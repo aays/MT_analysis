@@ -1,0 +1,173 @@
+---
+title: "Presence/absence analysis"
+author: Ahmed Hasan
+output: pdf_document
+---
+
+To do:
+- create presence/absence table of genes (like Hamaji 2018)
+- is synteny conserved across the three MT?
+
+```{r}
+library(tidyverse)
+library(fs)
+library(here)
+```
+
+## Loading in data
+
+```{r}
+blast_header <- c('query_id', 'subject_id', 'pct_identity', 
+                  'aln_length', 'n_of_mismatches', 'gap_openings', 
+                  'q_start', 'q_end', 's_start', 's_end', 'e_value', 'bit_score')
+gff_header <- c('seqname', 'source', 'feature', 'start', 'end', 
+                'score', 'strand', 'frame', 'info')
+fnames <- dir_ls(here('data/scaffold-mapping'), regexp = '[A-Z]_[a-z]+_scaffold_hits\\.tsv')
+d <- map_dfr(fnames, read_tsv, col_names = blast_header, col_types = cols(), .id = 'species') %>% 
+  mutate(species = str_extract(species, '[A-Z]_[a-z]+_')) %>% 
+  mutate(species = str_replace(species, '_$', '')) %>% 
+  select(species, everything())
+gff <- read_tsv(here('data/references/mtMinus.gff'), col_types = cols(),
+                col_names = gff_header) %>% 
+  filter(feature == 'gene') %>% 
+  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9]+;')) %>% 
+  select(-info) %>% 
+  mutate(gene_name = str_remove(gene_name, 'gene=')) %>% 
+  mutate(gene_name = str_remove(gene_name, 'm;$')) %>% 
+  mutate(start = start - 1) %>% 
+  mutate(gene_name = ifelse(gene_name == 'MTP0618', 'MT0618', gene_name)) %>% 
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 54194, end = 58754, score = '.', strand = '-',
+          frame = '.', gene_name = 'SPP3') %>% # actually SPP1C in mt minus - naming as plus for the join
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 338689, end = 339306, score = '.', strand = '+',
+          frame = '.', gene_name = 'MT0796') %>% 
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 329030, end = 331111, score = '.', strand = '-',
+          frame = '.', gene_name = 'HRGP1') %>% 
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 237310, end = 238039, score = '.', strand = '-',
+          frame = '.', gene_name = 'ADF43182.1') # equivalent to gene 155027 - change this later
+
+# coords for genes added to gff acquired from de Hoff 2013 Table S4
+```
+
+## Exploring the data
+
+How many matches for each species?
+
+```{r}
+d %>% 
+  select(species, query_id, subject_id) %>% 
+  distinct() %>% 
+  group_by(species) %>% 
+  tally()
+```
+
+Distribution of sequence identity - are there any 'bad' matches?
+
+```{r}
+ggplot(d, aes(x = pct_identity)) +
+  geom_histogram() +
+  facet_wrap(~ species) +
+  theme_minimal()
+
+d %>% 
+  select(species, pct_identity) %>% 
+  split(.$species) %>% 
+  map(~ unlist(.$pct_identity) %>% summary())
+```
+
+Do any queries (genes) match to multiple subjects (contigs)?
+
+```{r}
+d %>% 
+  select(species, query_id, subject_id) %>% 
+  distinct() %>% 
+  group_by(species, query_id) %>% 
+  tally() %>% 
+  arrange(desc(n))
+# nope - as expected
+
+```
+
+
+## Generating the table
+
+### Synteny
+
+```{r}
+# use min(s_start) and max(s_end) to get boundaries of matches
+# and then rank for synteny and compare against crein_gff
+# then contrast with ranks from reciprocal best blast results (which compared against predicted protein positions)
+
+d_synteny <- d %>% 
+  group_by(species, query_id, subject_id) %>% 
+  summarise(min_q_start = min(q_start), max_q_end = max(q_end),
+            min_s_start = min(s_start), max_s_end = max(s_end),
+            num_matches = n(), avg_ident = mean(pct_identity),
+            mean_bit_score = mean(bit_score), mean_e_val = mean(e_value)) %>% 
+  rename(gene_name = query_id) %>% 
+  left_join(
+    gff %>% 
+      select(gene_name, crein_start = start, crein_end = end),
+    by = 'gene_name') %>%
+  arrange(species, subject_id, crein_start) %>% 
+  group_by(species, subject_id) %>% 
+  mutate(crein_rank = dense_rank(crein_start),
+         orth_rank = dense_rank(min_s_start)) %>% 
+  ungroup() %>% 
+  arrange(species, subject_id, crein_rank) %>% 
+  mutate(strand = case_when(
+    max_s_end > min_s_start ~ '+',
+    max_s_end < min_s_start ~ '-'
+  )) %>% 
+  mutate(gene_name = ifelse(gene_name == 'ADF43182.1', '155027', gene_name)) %>% 
+  mutate(gene_name = ifelse(gene_name == 'SPP3', 'SPP1C', gene_name))
+
+# write_csv(d_synteny, here('data/synteny_tblastn.csv'))
+
+d_synteny_split <- d_synteny %>% 
+  split(.$species) %>% 
+  map(~ arrange(., subject_id, crein_rank))
+
+View(d_synteny_split$C_incerta)
+View(d_synteny_split$C_schloesseri)
+View(d_synteny_split$E_debaryana)
+
+```
+
+## Presence/absence
+
+
+```{r}
+genes_contigs_tblastn <- d_synteny %>% 
+  select(species, gene_name, contig = subject_id, strand)
+
+presence_absence_tblastn <- gff %>% 
+  select(gene_name) %>% 
+  left_join(
+    genes_contigs_tblastn %>% 
+    distinct() %>% 
+    select(species, gene_name, contig) %>% 
+    spread(species, contig),
+  by = 'gene_name')
+
+write_csv(presence_absence_tblastn, here('data/presence_absence_tblastn.csv'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,136 @@
+---
+title: "Expanding the gene table"
+author: Ahmed Hasan
+output: pdf_document
+---
+
+to do:
+- for the non-matched genes on a given contig for a given species, ID which reinhardtii chromosome has a homolog
+  - ie are there translocations
+- filter out:
+  - genes that are already accounted for (i.e. in the reciprocal best blast)
+  - contigs that only had one hit in the reinhardtii -> species genome tblastn
+  
+```{r}
+library(tidyverse)
+library(fs)
+library(here)
+```
+
+## Loading in data
+
+```{r}
+blast_header <- c('query_id', 'subject_id', 'pct_identity', 
+                  'aln_length', 'n_of_mismatches', 'gap_openings', 
+                  'q_start', 'q_end', 's_start', 's_end', 'e_value', 'bit_score')
+fnames <- dir_ls(here('data/reinhardtii-tblastn/'))
+d <- map_dfr(fnames, read_tsv, col_names = blast_header, 
+          col_types = cols(), .id = 'species') %>% 
+  mutate(species = str_extract(species, '[CE]_[a-z]+')) %>% 
+  separate(query_id, into = c('query_id', 'contig'), sep = ':')
+
+# write_csv(d, here('data/reinhardtii-tblastn/other_genes_full.csv'))
+```
+
+
+### Filtering
+
+Remove genes that are already accounted for:
+
+```{r}
+reciprocal_hits <- read_csv(here('data/synteny_reciprocal.csv'), col_types = cols()) # use ortholog_name column
+
+d_no_reciprocal <- d %>% 
+  anti_join(
+    reciprocal_hits %>% rename(query_id = ortholog_name),
+    by = c('species', 'query_id', 'contig')
+  ) # removed about 700 rows
+
+d_no_reciprocal
+```
+
+Remove genes from contigs with only one tblastn hit in `genome_tblastn.Rmd`:
+
+```{r}
+presence_absence_tblastn <- read_csv(here('data/presence_absence_tblastn.csv'), col_types = cols())
+
+main_contigs <- presence_absence_tblastn %>% 
+  select(-gene_name) %>% 
+  gather(species, contig) %>% 
+  filter(!is.na(contig)) %>% 
+  group_by(species, contig) %>% 
+  tally() %>% 
+  arrange(-n) %>% 
+  filter(n > 1)
+
+main_contigs
+
+# for incerta - keep C0033
+# for schloesseri - keep C0045
+# for debaryana - keep C0043 and C0116
+# all other contigs only have one gene! 
+
+d_filtered <- d_no_reciprocal %>% 
+  inner_join(
+    main_contigs %>% select(-n),
+    by = c('species', 'contig')
+  )
+
+d_filtered # only retained 3051 rows
+
+# write_csv(d_filtered, here('data/reinhardtii-tblastn/other_genes_filtered.csv'))
+
+```
+
+
+## Exploring the data
+
+Where in the reinhardtii genome are genes found most?
+
+```{r}
+# first - check that no gene has two separate hits
+d_filtered %>% 
+  select(species, query_id, contig) %>% 
+  distinct() %>% 
+  group_by(species, query_id) %>% 
+  tally() %>% 
+  arrange(-n) # nope - all hit one region
+
+reinhardtii_counts <- d_filtered %>% 
+  select(species, query_id, subject_id) %>% 
+  distinct() %>% 
+  group_by(species, subject_id) %>% 
+  tally() %>% 
+  arrange(-n)
+
+reinhardtii_counts # each value represents a unique gene
+
+# write_csv(reinhardtii_counts, here('data/reinhardtii-tblastn/other_genes_counts.csv'))
+
+```
+
+overwhelmingly chromosome 6 - interesting...
+
+these not being 'caught' with the reciprocal best blast, which just used
+chlamy MT genes, tells me synteny extends outside the MT locus
+
+interesting to see many hits to mtMinus - you'd think these would have been filtered out
+as part of the reciprocal best blast results - unless they're braker predicted genes
+that weren't predicted when augustus was run on mtMinus
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
