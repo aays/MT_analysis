@@ -1,0 +1,208 @@
+---
+title: "Reciprocal best blast + presence/absence"
+author: Ahmed Hasan
+output: pdf_document
+---
+
+to do:
+- compare tblastn hits vs blastx and ID reciprocal hits
+- use predictions in gff to ID contigs containing genes and create presence/absence table
+- compare presence/absence table to the one yielded by straight blastn
+
+```{r}
+library(tidyverse)
+library(fs)
+library(here)
+```
+
+## Loading in data + cleanup
+
+```{r}
+blastp_fnames <- dir_ls(here('data/blastp'), regexp = 'fwd')
+blastp_rev_fnames <- dir_ls(here('data/blastp'), regexp = 'rev')
+gff_fnames <- dir_ls(here('data/references'), regexp = '[A-Za-z]+_[a-z]+\\.genes\\.gff3')
+
+blast_header <- c('query_id', 'subject_id', 'pct_identity', 
+                  'aln_length', 'n_of_mismatches', 'gap_openings', 
+                  'q_start', 'q_end', 's_start', 's_end', 'e_value', 'bit_score')
+gff_header <- c('seqname', 'source', 'feature', 'start', 'end', 
+                'score', 'strand', 'frame', 'info')
+
+fxn <- partial(read_tsv, col_types = cols(), col_names = blast_header)
+
+# blast output
+d_blastp <- map_dfr(blastp_fnames, fxn, .id = 'species') %>% 
+  mutate(species = str_extract(species, '[A-Z]_[a-z]+_')) %>% 
+  mutate(species = str_remove(species, '_$')) %>% 
+  separate(query_id, sep = '\\.', into = c('query_id', 'tid'))  # for joining w/ gff
+d_blastp_rev <- map_dfr(blastp_rev_fnames, fxn, .id = 'species') %>% 
+  mutate(species = str_extract(species, '[A-Z]_[a-z]+_')) %>% 
+  mutate(species = str_remove(species, '_$')) %>% 
+  separate(subject_id, sep = '\\.', into = c('subject_id', 'tid'))  # for joining w/ gff
+         
+# gffs
+d_gff <- map_dfr(gff_fnames, read_tsv, col_names = gff_header, col_types = cols(), .id = 'species') %>% 
+  mutate(species = str_extract(species, '[CE][a-z]+_[a-z]+')) %>% 
+  mutate(species = str_remove(species, '(hlamydomonas)|(daphochlamys)')) %>% 
+  mutate(gene_name = str_remove(info, 'ID=')) %>% 
+  mutate(gene_name = str_remove(gene_name, ';$')) %>% 
+  mutate(start = start - 1)
+gff_lookup <- d_gff %>% 
+  select(species, seqname, gene_name, strand)
+
+crein_gff <- read_tsv(here('data/references/mtMinus.gff'), col_names = gff_header, col_types = cols()) %>% 
+  filter(feature == 'gene') %>% 
+  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9]+;')) %>% 
+  select(-info) %>% 
+  mutate(gene_name = str_remove(gene_name, 'gene=')) %>% 
+  mutate(gene_name = str_remove(gene_name, 'm;$')) %>% 
+  mutate(start = start - 1) %>% 
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 54194, end = 58754, score = '.', strand = '-',
+          frame = '.', gene_name = 'SPP3') %>% # actually SPP1C in mt minus - naming as plus for the join
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 338689, end = 339306, score = '.', strand = '+',
+          frame = '.', gene_name = 'MT0796') %>% 
+  add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
+          start = 329030, end = 331111, score = '.', strand = '-',
+          frame = '.', gene_name = 'HRGP1')
+           
+```
+
+
+## Find reciprocal hits
+
+```{r}
+reciprocal_full <- d_blastp %>% 
+  rename(ortholog_name = query_id,
+         gene_name = subject_id) %>% 
+  inner_join(
+    rename(d_blastp_rev, 
+           gene_name = query_id,
+           ortholog_name = subject_id),
+    by = c('species', 'gene_name', 'ortholog_name')
+  ) %>% 
+  select(species, gene_name, ortholog_name, tid.x, tid.y, contains('bit_score'), pct_identity.x, pct_identity.y,
+         aln_length.x, aln_length.y, n_of_mismatches.x, n_of_mismatches.y, q_start.x, s_start.y,
+         q_end.x, s_end.y, s_start.x, q_start.y, s_end.x, q_end.y, gap_openings.x, gap_openings.y,
+         contains('e_value'))
+
+View(reciprocal_full)
+
+# do any matches have multiple hits?
+reciprocal_full %>% 
+  group_by(species, gene_name) %>% 
+  tally() %>% 
+  filter(n > 1) %>% 
+  arrange(desc(n))
+# two - NMDA1 in incerta, and PDK1 in debaryana
+```
+
+Need to rank hits by bit score (standard ranking) and e-value (descending ranking)
+
+if rank.x == rank.y (i.e. they're both 1) for (ideally) both bit score and e-value, we have our match
+
+if there is a tie, `dense_rank` will assign both observations the same rank
+
+```{r}
+quick_look <- function(species_in, gene = NA, orth = NA) {
+  out <- reciprocal_ranked %>% 
+    filter(species == species_in)
+  if (is.na(orth)) {
+    return(out %>% filter(gene_name == gene))
+  } else if (is.na(gene)) {
+    return(out %>% filter(ortholog_name == orth))
+  } else {
+    return(out %>% filter(gene_name == gene | ortholog_name == orth))
+  }
+}
+
+```
+
+## Presence absence table
+
+```{r}
+# for presence/absence table
+genes_contigs <- reciprocal_full %>% 
+  select(species, gene_name, ortholog_name) %>% 
+  left_join(
+    rename(gff_lookup, ortholog_name = gene_name, contig = seqname),
+    by = c('species', 'ortholog_name')
+  ) %>% 
+  ungroup()
+
+presence_absence <- gff %>% 
+  select(gene_name) %>% 
+  left_join(
+    genes_contigs_tblastn %>% 
+    distinct() %>% 
+    select(species, gene_name, contig) %>% 
+    spread(species, contig),
+  by = 'gene_name')
+
+# write_csv(presence_absence, here('data/presence_absence_reciprocal.csv'))
+
+# add position information for synteny
+genes_contigs_pos <- genes_contigs %>% 
+  left_join(
+    crein_gff %>% 
+      select(gene_name, crein_start = start, crein_end = end),
+    by = 'gene_name') %>%
+  left_join(
+    d_gff %>% 
+      select(ortholog_name = gene_name, orth_start = start, orth_end = end, contig = seqname),
+    by = c('contig', 'ortholog_name')
+  ) %>% 
+  arrange(species, contig, crein_start) %>% 
+  group_by(species, contig) %>% 
+  mutate(crein_rank = dense_rank(crein_start),
+         orth_rank = dense_rank(orth_start)) %>% 
+  ungroup() %>% 
+  rename(crein_strand = strand) %>% 
+  arrange(species, contig, crein_rank)
+
+View(genes_contigs_pos)
+
+# write_csv(genes_contigs_pos, here('data/synteny_reciprocal.csv'))
+
+```
+
+
+## Table for comparison with tblastn results
+
+Need a version of `reciprocal_full` that contains gff info
+(contig, coords) to compare against table in `presence_synteny_analysis`
+
+```{r}
+reciprocal_ranked_gff <- reciprocal_ranked %>% 
+  left_join(
+    rename(gff_lookup, ortholog_name = gene_name, contig = seqname),
+    by = c('species', 'ortholog_name')
+  ) %>% 
+  left_join(
+    crein_gff %>% 
+      select(gene_name, crein_start = start, crein_end = end),
+    by = 'gene_name') %>%
+  left_join(
+    d_gff %>% 
+      select(ortholog_name = gene_name, orth_start = start, orth_end = end, contig = seqname),
+    by = c('contig', 'ortholog_name')
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
