@@ -668,3 +668,83 @@ alright, back on this
 
 bringing the three files above offline to analyze in an Rmd
 
+in the meantime - attempting to install jcvi for synteny analysis:
+
+```bash
+pip install --user jcvi
+```
+
+note - this is a python2 thing and dropped a ton of warnings
+
+using this -
+
+```bash
+python -m jcvi.formats.fasta -h
+```
+
+apparently dropping just `python2.7 -m jcvi' raises an error - need to call
+on a module each time
+
+going to switch over to a jupyter notebook (`synteny_plots.ipynb`) in `analysis` for this
+
+## 22/1/2020
+
+missing some C domain genes in the original blasting! 
+
+after looking at NameTranslation, it seems it's really just MAT3 - it just was missing
+from NameTranslation, despite being in mtPlus_CDS.fasta
+
+the PACid is 26893469 - will just pull out that sequence from the fasta
+and append it to the files in `fastas-nuc` and `fastas`
+
+```python
+>>> mat3_id = '26893469'
+  2 for record in SeqIO.parse('fastas-nuc/mtPlus_CDS.fasta', 'fasta'):
+  3     if str(record.id) == mat3_id:
+  4         mat3 = record
+  5         break
+>>> mat3
+SeqRecord(seq=Seq('ATGTCAACCACGCACCCGCCAGAGCGCGGGCTTGTAGCACTAATTAAGGGGCTG...TGA', SingleLetterAlphabet()), id='26893469', name='26893469', description='26893469', dbxrefs=[])
+>>> mat3_protein = mat3.seq.translate()
+>>> with open('fastas/mtMinus_proteins.fasta', 'a') as f:
+  2     f.write('>MAT3\n')
+  3     f.write(str(mat3_protein) + '\n')
+```
+
+and now to run the tblastn and blastp operations again - see 28/12/2019 for code
+
+WAIT - it seems none of the C domain genes in NameTranslation were put into mtMinus_proteins!
+the reason for this is that my original name traslation worked off of the ADF IDs for mtMinus,
+and no C domain gene has one of those
+
+since the C domain genes are virtually identical between the two, we'll just pull
+the CDS from mtPlus_CDS.fasta using the 268 series of IDs, and then add those sequences
+to mt
+
+finally, for the jcvi stuff, need to provide an MT only gff for reinhardtii - use mtPlus to 
+keep the C domain coordinates consistent, however
+
+prepping `mtMinus_proteins.fasta`:
+
+```python
+>>> names = {}
+  2 with open('data/NameTranslation_corrected.txt', 'r') as f:
+  3     for line in f:
+  4         if line.startswith('C'):
+  5             sp = line.split('\t')
+  6             names[sp[2]] = sp[1]
+>>> names
+{'': '522917', '26893775': '522918', '26894611': '294742', '26893186': 'FUM1', '26894697': '522914', '26893900': 'Cre06.g255250', '26893692': 'THI10', '26893448': 'MT0829', '26893018': '522919', '26893556': '522922', '26894174': 'FBX9', '26894024': '344092', '26893348': 'MT0828', '26893097': '196063', '26893146': '522915', '26894287': 'SAD1', '26893271': '294752', '26893675': 'CGLD28', '26893528': '196073', '26893469': 'MAT3', '26894071': 'Cre06.g255150'}
+>>> names.pop('')
+'522917'
+>>> from Bio import SeqIO
+>>> from tqdm import tqdm
+  2 with open('data/fastas/mtMinus_proteins.fasta', 'a') as f:
+  3     for record in tqdm(SeqIO.parse(fname, 'fasta')):
+  4         if str(record.id) in names.keys():
+  5             f.write('>' + names[str(record.id)] + '\n')
+  6             f.write(str(record.seq.translate() + '\n'))
+114it [00:00, 5772.67it/s]
+```
+
+and now the blast commands can be run again
