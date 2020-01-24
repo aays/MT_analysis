@@ -747,4 +747,92 @@ prepping `mtMinus_proteins.fasta`:
 114it [00:00, 5772.67it/s]
 ```
 
-and now the blast commands can be run again
+and now the blast commands can be run again.
+
+## 24/1/2020
+
+today - adding the C domain to mtMinus
+
+according to Fig 1 of de Hoff, MT0828 is the first gene in the C domain,
+and is in both mtPlus_only.gff (listed as gene 26893348, line 1607) and
+mtMinus.gff (line 343) although there seems to be a disparity in their lengths
+
+the mtMinus GFF only lists CDS regions - let's still line up the end coordinates
+of the two gene records (345366 for MT-, 826768 for MT+) and then add the remaining
+records
+
+for jcvi with MT+, I used mRNA records with the ness_ID field in INFO - 
+I ought to add gene records to the new mtMinus file, and the correct
+gene names (use NameTranslation for this) in the gene field in INFO 
+to be consistent with the remainder of MT-
+
+```bash
+cp -v data/references/mtMinus.gff data/references/mtMinus_C.gff
+```
+
+```python
+>>> name_translation
+{'': '522917', '26893775': '522918', '26893675': 'CGLD28', '26894071': 'Cre06.g255150', 
+'26893271': '294752', '26893469': 'MAT3', '26894611': '294742', 
+'26893900': 'Cre06.g255250', '26893448': 'MT0829', '26894174': 'FBX9', 
+'26893186': 'FUM1', '26893556': '522922', '26893348': 'MT0828', 
+'26893528': '196073', '26893018': '522919', '26894697': '522914', 
+'26894287': 'SAD1', '26893097': '196063', '26894024': '344092', 
+'26893692': 'THI10', '26893146': '522915'}
+>>> name_translation.pop('') # remove one gene name w/o a ness ID
+'522917'
+>>> from tqdm import tqdm
+  2 from copy import deepcopy
+  3 import re
+  4 dupes = ['26894286', '26893270']
+  5 name_translation['26893507'] = '112569' # missing gene from earlier
+  6 with open('data/references/mtPlus_only.gff', 'r') as f:
+  7     with open('data/references/mtMinus_C.gff', 'a') as f_out:
+  8         relevant_lines = []
+  9         for line in tqdm(f):
+ 10             sp = line.split('\t')
+ 11             start, end = int(sp[3]), int(sp[4])
+ 12             if start > 826768:
+ 13                 if sp[2] == 'mRNA':
+ 14                     gene_name = sp[8].split(';')[0].lstrip('ID=PAC:')
+ 15                     if gene_name in dupes:
+ 16                         continue # some genes recorded twice for some reason
+ 17                     actual_name = name_translation[gene_name]
+ 18                     sp_to_write = deepcopy(sp)
+ 19                     sp_to_write[0] = 'mtMinus'
+ 20                     sp_to_write[1] = 'feature'
+ 21                     sp_to_write[2] = 'gene'
+ 22                     sp_to_write[3:5] = start - 481402, end - 481402
+ 23                     sp_to_write[8] = 'gene={};ID={}'.format(actual_name, gene_name)
+ 24                     out = [str(i) for i in sp_to_write]
+ 25                     out = '\t'.join(out)
+ 26                     f_out.write(out + '\n')
+2168it [00:00, 400583.75it/s]
+```
+
+looks good, although this brought to my attention that we're missing _another_
+gene for the mtMinus proteins/fastas - 112569, the second last gene in the C domain
+
+```python
+>>> from Bio import SeqIO
+>>> with open('data/fastas/mtMinus_proteins.fasta', 'a') as f:
+  2     for record in SeqIO.parse('data/fastas-nuc/mtPlus_CDS.fasta', 'fasta'):
+  3         if str(record.id) == '26893507': # 112569
+  4             f.write('>' + '112569' + '\n')
+  5             f.write(str(record.seq.translate() + '\n'))
+```
+
+and now to blast *again* for what is hopefully the final time - once again,
+the commands are up in the 28/12/2019 log
+
+also updated NameTranslation_corrected with this missing gene
+
+
+
+
+
+
+
+
+
+
