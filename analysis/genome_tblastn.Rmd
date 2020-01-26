@@ -27,13 +27,14 @@ d <- map_dfr(fnames, read_tsv, col_names = blast_header, col_types = cols(), .id
   mutate(species = str_extract(species, '[A-Z]_[a-z]+_')) %>% 
   mutate(species = str_replace(species, '_$', '')) %>% 
   select(species, everything())
-gff <- read_tsv(here('data/references/mtMinus.gff'), col_types = cols(),
+gff <- read_tsv(here('data/references/mtMinus_C.gff'), col_types = cols(),
                 col_names = gff_header) %>% 
   filter(feature == 'gene') %>% 
-  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9]+;')) %>% 
+  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9\\.]+;')) %>% 
   select(-info) %>% 
   mutate(gene_name = str_remove(gene_name, 'gene=')) %>% 
   mutate(gene_name = str_remove(gene_name, 'm;$')) %>% 
+  mutate(gene_name = str_remove(gene_name, ';$')) %>% 
   mutate(start = start - 1) %>% 
   mutate(gene_name = ifelse(gene_name == 'MTP0618', 'MT0618', gene_name)) %>% 
   add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
@@ -153,7 +154,7 @@ presence_absence_tblastn <- gff %>%
     spread(species, contig),
   by = 'gene_name')
 
-write_csv(presence_absence_tblastn, here('data/presence_absence_tblastn.csv'))
+# write_csv(presence_absence_tblastn, here('data/presence_absence_tblastn.csv'))
 ```
 
 
