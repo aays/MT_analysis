@@ -50,12 +50,13 @@ d_gff <- map_dfr(gff_fnames, read_tsv, col_names = gff_header, col_types = cols(
 gff_lookup <- d_gff %>% 
   select(species, seqname, gene_name, strand)
 
-crein_gff <- read_tsv(here('data/references/mtMinus.gff'), col_names = gff_header, col_types = cols()) %>% 
+crein_gff <- read_tsv(here('data/references/mtMinus_C.gff'), col_names = gff_header, col_types = cols()) %>% 
   filter(feature == 'gene') %>% 
-  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9]+;')) %>% 
+  mutate(gene_name = str_extract(info, 'gene=[A-Za-z0-9\\.]+;')) %>% 
   select(-info) %>% 
   mutate(gene_name = str_remove(gene_name, 'gene=')) %>% 
   mutate(gene_name = str_remove(gene_name, 'm;$')) %>% 
+  mutate(gene_name = str_remove(gene_name, ';$')) %>% 
   mutate(start = start - 1) %>% 
   add_row(seqname = 'mtMinus', source = 'feature', feature = 'gene',
           start = 54194, end = 58754, score = '.', strand = '-',
@@ -131,6 +132,7 @@ genes_contigs <- reciprocal_full %>%
   ) %>% 
   ungroup()
 
+# check against tblastn output - genome_tblastn.Rmd
 presence_absence <- gff %>% 
   select(gene_name) %>% 
   left_join(
@@ -174,7 +176,7 @@ Need a version of `reciprocal_full` that contains gff info
 (contig, coords) to compare against table in `presence_synteny_analysis`
 
 ```{r}
-reciprocal_ranked_gff <- reciprocal_ranked %>% 
+reciprocal_ranked_gff <- reciprocal_full %>% 
   left_join(
     rename(gff_lookup, ortholog_name = gene_name, contig = seqname),
     by = c('species', 'ortholog_name')
