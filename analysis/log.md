@@ -827,6 +827,59 @@ the commands are up in the 28/12/2019 log
 
 also updated NameTranslation_corrected with this missing gene
 
+## 26/1/2020
+
+also need to update mtMinus named fasta file for synteny plots
+
+```python
+>>> fname = 'data/NameTranslation_corrected.txt'
+>>> out = 'data/fastas-nuc/mtMinus_CDS_named.fasta'
+>>> plus = 'data/fastas-nuc/mtPlus_CDS.fasta'
+>>> from Bio import SeqIO
+>>> names = {}
+  2 with open(fname, 'r') as f:
+  3     for line in f:
+  4         if line.startswith('C'):
+  5             sp = line.split('\t')
+  6             names[sp[2]] = sp[1]
+>>> names.pop('')
+'522917'
+>>> from tqdm import tqdm
+  2 with open(out, 'a') as f:
+  3     for record in tqdm(SeqIO.parse(plus, 'fasta')):
+  4         if str(record.id) in names.keys():
+  5             f.write('>' + names[str(record.id)] + '\n')
+  6             f.write(str(record.seq) + '\n')
+114it [00:00, 1659.46it/s]
+>>> new_names = [s.id for s in SeqIO.parse(out, 'fasta')]
+>>> len(new_names)
+62
+>>> len(list(set(new_names)))
+61
+>>> for i, element in enumerate(new_names):
+  2     if new_names.count(element) > 1:
+  3         print(element)
+MT0828
+MT0828
+```
+
+will manually remove MT0828 from the file - they seem to differ slightly from
+the eye test, so I'm going to keep the MT- version from Rob's files
+
+## 27/1/2020
+
+some manual gene changes to `mtMinus_C_noM.gff` and/or the corresponding fasta:
+
+- HRGP1 is misspelled as HGRP1 in the mtMinus gff - correcting this manually
+- changing SPP1C to SPP3 in the gff (matching the fasta + de Hoff)
+- ADF43182 is actually 155027 - need to change that in the fasta (gff has the right name)
+- gff lists MT0618 as MTP0618 - de Hoff calls it MT0618
+    - same for MT0796/MTP0796
+
+fixed all the above manually with vim - maybe not the most automatically reproducible, but
+it got the job done
+
+rerunning the blast commands one final time after all these minor name fixes
 
 
 
