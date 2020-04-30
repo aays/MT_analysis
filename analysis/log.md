@@ -873,6 +873,7 @@ some manual gene changes to `mtMinus_C_noM.gff` and/or the corresponding fasta:
 - HRGP1 is misspelled as HGRP1 in the mtMinus gff - correcting this manually
 - changing SPP1C to SPP3 in the gff (matching the fasta + de Hoff)
 - ADF43182 is actually 155027 - need to change that in the fasta (gff has the right name)
+    - doing the same for `fastas/mtMinus_proteins.fasta`
 - gff lists MT0618 as MTP0618 - de Hoff calls it MT0618
     - same for MT0796/MTP0796
 
@@ -881,11 +882,158 @@ it got the job done
 
 rerunning the blast commands one final time after all these minor name fixes
 
+## 13/2/2020
 
+today: creating extended synteny diagrams
 
+I've created a subset of chr6 for MT+ in `data/chr6_subset.gff`, but there are three
+tasks remaining:
 
+1. extract CDSs for these for the alignment
+2. create a spliced MT- gff with updated coordinates
+3. extract CDSs for the spliced MT- gff as well
 
+the overall CDS file can be found in 
+`/scratch/research/references/chlamy/5.3.../annotation/Creinhardtii_v5.3_223_cds.fa`
 
+going to create a symlink in `data/fastas-nuc` and work from there
 
+something to note - the MT- gff only contains 'ADF' format IDs - these line up
+with the mtMinus fastas we have, but not the autosomes, so when creating a fasta
+for jcvi to use in creating a synteny plot we have to have ADF labels for
+MT- genes and standard IDs (g[0-9] etc) for the CDSs
+
+extracting CDSs:
+
+```python
+from tqdm import tqdm
+from Bio import SeqIO
+seq_file = 'data/fastas-nuc/Creinhardtii_v5.3_223_cds.fa'
+seqs = {}
+for record in tqdm(SeqIO.parse(seq_file, 'fasta')):
+    pacid = str(record.id).split('|')[1].lstrip('PACid:')
+    seqs[pacid] = str(record.seq)
+with open('data/fastas-nuc/chr6_subset_plus.fasta', 'w') as f_out:
+    with open('data/references/chr6_subset.gff', 'r') as f:
+        for line in tqdm(f):
+            sp = line.rstrip().split('\t')
+            chrom, type, info = sp[0], sp[2], sp[8]
+            gene_id = info.split(';')[0].lstrip('ID=PAC:')
+            if gene_id in seqs:
+                f_out.write('>' + gene_id + '\n')
+                f_out.write(seqs[gene_id] + '\n')
+```
+        
+plot's been made in jupyter and looks great! seems regions outside MT are quite syntenic
+for the most part. now to redo with mtMinus for completeness (ie steps 2 and 3 above)
+
+## 17/2/2020
+
+today: continuing extended synteny diagrams, but will need to 'splice in' mtMinus
+
+comparing the plus and minus gffs (`mtPlus_genes.gff` and `mtMinus_C_noM.gff`, the final
+gene of the C domain (MAT3) should have the same length in both, and it does
+(chr6:937146-943474 and mtMinus:455744-462072, both 6328 bp). 
+
+I used the ness_ID for the plus file - it's essentially the PACid minus 'PAC:'. we'll
+continue to use the ness_ID, but the `.cds` file being made for jcvi should have the
+mtMinus genes in 'ADF' format like in the gff
+
+back to the offset - 943474 - 462072 = 481402, which is the value that all
+post-mtMinus gene positions have to be subtracted by in the spliced gff - but also
+have to account for the NIC7 offset at the start (336959 in MT+, 39983 in MT-) -
+add 296976 to each MT- coord
+
+also going to convert the type field from 'gene' to 'mRNA' to keep things consistent
+(since that's what I worked off in the plus)
+
+```python
+from tqdm import tqdm
+chr6_fname = 'data/references/chr6.gff'
+mtminus_fname = 'data/references/mtMinus_C_noM.gff'
+outname = 'data/references/chr6_mtMinus_full.gff' # will make subset later
+with open(outname, 'w') as f_out:
+    with open(chr6_fname, 'r') as f_chr:
+        with open(mtminus_fname, 'r') as f_mt:
+            counter = 0
+            for line in tqdm(f_chr):
+                if not 'mRNA' in line:
+                    continue
+                sp = line.rstrip().split('\t')
+                start, end = int(sp[3]), int(sp[4])
+                if start < 336959: # NIC7 start
+                    f_out.write(line)
+                elif start >= 336959 and end <= 943474:
+                    for mt_line in f_mt:
+                        sp_mt = mt_line.rstrip().split('\t')
+                        if len(sp_mt[-1].split(';')) == 2:
+                            sp_mt[-1] = sp_mt[-1].replace('ID=', 'ness_ID=') # C domain genes
+                        m_start, m_end = int(sp_mt[3]) + 296976, int(sp_mt[4]) + 296976
+                        m_start, m_end = str(m_start), str(m_end)
+                        sp_out = '\t'.join(['chromosome_6', 'phytozome8_0', 'mRNA']) + '\t'
+                        sp_out += '\t'.join([m_start, m_end] + sp_mt[5:])
+                        sp_out += '\n'
+                        f_out.write(sp_out)
+                        counter += 1
+                elif start > 943474:
+                    sp = line.rstrip().split('\t')
+                    e_start, e_end = int(sp[3]) - 481402, int(sp[4]) - 481402
+                    e_start, e_end = str(e_start), str(e_end)
+                    sp_out = '\t'.join(sp[:3] + [e_start, e_end] + sp[5:]) + '\n'
+                    f_out.write(sp_out)
+```
+
+it works! though that took *way* longer to debug than I'd care to admit. 
+
+creating a fasta that has all the included genes should just involve slamming `chr6_subset_plus.fasta`
+together with `mtMinus_CDS.fasta` (since that has all the ADF genes with that naming):
+
+```bash
+cat chr6_subset_plus.fasta mtMinus_CDS.fasta > chr6_subset_minus.fasta
+```
+
+creating the subsetted gff (should end on the same gene as the plus - PACid 26893493) - 
+corresponds to 723162 in the GFF - let's do this with awk
+
+```bash
+awk '{ if($5 <= 723162) { print }}' chr6_mtMinus_full.gff > chr6_mtMinus_subset.gff
+```
+
+back to the notebook! 
+
+## 21/2/2020
+
+two issues with the genes in `chr6_subset_minus.fasta` -
+
+(well, more like 1.5)
+
+- some of the ADF gene names have a .1 appended to the end in the bed file
+- the mtPlus gene ids are going to raise 'not in `chr6_subset_minus.bed` errors
+  since the MT- locus is spliced in
+    - this is a much more 'ignorable' issue
+
+fixing the ADF issue:
+
+```python
+from Bio import SeqIO
+from tqdm import tqdm
+import re
+fname = 'data/fastas-nuc/chr6_subset_minus.fasta'
+outname = 'data/fastas-nuc/chr6_subset_minus_corrected.fasta'
+
+with open(outname, 'w') as f:
+    outer_count, inner_count = 0, 0
+    for record in tqdm(SeqIO.parse(fname, 'fasta')):
+        seqname = str(record.id)
+        pattern = '\.[0-9]$'
+        if seqname.startswith('ADF'):
+            outer_count += 1
+            if re.search(pattern, seqname):
+                seqname = seqname[:-2]
+                inner_count += 1
+        f.write('>' + seqname + '\n')
+        f.write(str(record.seq) + '\n')
+print(outer_count, inner_count) # both 41
+```
 
 
