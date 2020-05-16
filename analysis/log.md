@@ -1234,7 +1234,7 @@ now to generate files to create dotplots from - this will essentially involve cr
 new versions of the `last.filtered` files the the query/subject coordinates replaced with
 genomic coordinates using the mtMinus and other species' GFFs
 
-### 14/5/2020
+## 14/5/2020
 
 today - generating files to create dotplots from
 
@@ -1249,7 +1249,20 @@ cp -v jcvi/mtMinus.C_schloesseri.bed data/jcvi-files/
 cp -v jcvi/mtMinus.C_schloesseri.last.filtered data/jcvi-files/
 ```
 
+## 16/5/2020
 
+need to repeat the above with more autosomal sequence
+
+the tricky thing here is that the chr6 gene IDs will have changed from the
+actual gene names to PACids - might need to create a name lookup table for this
+just to make sure everything lines up correctly with the blastp results
+
+```bash
+cp -v jcvi/chr6_subset_minus.C_incerta.bed data/jcvi-files/
+cp -v jcvi/chr6_subset_minus.C_incerta.last.filtered data/jcvi-files/
+cp -v jcvi/chr6_subset_minus.C_schloesseri.bed data/jcvi-files/
+cp -v jcvi/chr6_subset_minus.C_schloesseri.last.filtered data/jcvi-files/
+```
 
 
 
