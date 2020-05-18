@@ -1264,6 +1264,103 @@ cp -v jcvi/chr6_subset_minus.C_schloesseri.bed data/jcvi-files/
 cp -v jcvi/chr6_subset_minus.C_schloesseri.last.filtered data/jcvi-files/
 ```
 
+update - this isn't enough! the last match in `chr6_mtPlus_4m` was around chr6:1.46m (gene 26894263) -
+need to make extended chr6 subset bed and last files 
+
+using `data/references/chr6_mtMinus_4m.gff`
+
+need to resolve issue of no pacids in mtMinus genes - need to use the ness IDs for these
+
+```python
+from tqdm import tqdm
+from Bio import SeqIO
+seq_file = 'data/fastas-nuc/Creinhardtii_v5.3_223_cds.fa'
+seqs = {}
+for record in tqdm(SeqIO.parse(seq_file, 'fasta')):
+    pacid = str(record.id).split('|')[1].lstrip('PACid:')
+    seqs[pacid] = str(record.seq)
+with open('data/fastas-nuc/chr6_4m_minus_temp.fasta', 'w') as f_out:
+    with open('data/references/chr6_mtMinus_full.gff', 'r') as f:
+        for line in tqdm(f):
+            if 'ID=PAC:' not in line:
+                continue # will append mtMinus_CDS.fasta to get these
+            sp = line.rstrip().split('\t')
+            chrom, type, end, info = sp[0], sp[2], int(sp[4]), sp[8]
+            if end > 3993587:
+                print(end)
+                break
+            gene_id = info.split(';')[0].lstrip('ID=PAC:')
+            if gene_id in seqs:
+                f_out.write('>' + gene_id + '\n')
+                f_out.write(seqs[gene_id] + '\n')
+```
+
+and then:
+
+```bash
+# in data/fastas-nuc
+cat chr6_4m_minus_temp.fasta mtMinus_CDS.fasta > chr6_4m_minus.fasta
+rm chr6_4m_minus_temp.fasta
+grep -c '>' chr6_4m_minus.fasta # 834 genes
+```
+
+now to run the jcvi commands:
+
+```bash
+cd jcvi/
+
+python2.7 -m jcvi.formats.gff bed --type=mRNA \
+--key=ness_ID ../data/references/chr6_mtMinus_4m.gff \
+-o chr6_mtMinus_4m_temp.bed
+
+python2.7 -m jcvi.formats.fasta format \
+../data/fastas-nuc/chr6_4m_minus.fasta \
+chr6_mtMinus_4m.cds
+```
+
+need to remove the .1s from the ADF genes listed in the bed file:
+
+```python
+import re
+from copy import deepcopy
+from tqdm import tqdm
+fname = 'jcvi/chr6_mtMinus_4m_temp.bed'
+outname = 'jcvi/chr6_mtMinus_4m.bed'
+from copy import deepcopy
+from tqdm import tqdm
+import re
+with open(fname, 'r') as f_in:
+    fieldnames = ['chrom', 'start', 'end', 'gene', 'score', 'strand']
+    reader = csv.DictReader(f_in, fieldnames=fieldnames, delimiter='\t')
+    with open(outname, 'w') as f_out:
+        writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
+        for line in tqdm(reader):
+            line_out = deepcopy(line)
+            if 'ADF' in line['gene']:
+                line_out['gene'] = re.search('(ADF[0-9]+)', line['gene']).group(1)
+                writer.writerow(line_out)
+            else:
+                writer.writerow(line_out)
+```
+
+and now we can do the alignments for incerta and schloesseri:
+
+```bash
+time python2.7 -m jcvi.compara.catalog ortholog \
+chr6_mtMinus_4m C_incerta --cscore=.99
+
+time python2.7 -m jcvi.compara.catalog ortholog \
+chr6_mtMinus_4m C_schloesseri --cscore=.99
+```
+
+porting the files to `data/jcvi-files`:
+
+```bash
+cp -v chr6_mtMinus_4m.C_incerta.bed ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_incerta.last.filtered ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_schloesseri.bed ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_schloesseri.last.filtered ../data/jcvi-files
+```
 
 
 
