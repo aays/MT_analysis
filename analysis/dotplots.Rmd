@@ -1,0 +1,274 @@
+---
+title: "Dotplots"
+author: Ahmed Hasan
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(here)
+library(patchwork)
+```
+
+## Load in data
+
+Column names in LAST output from [here](http://last.cbrc.jp/doc/lastal.html).
+
+```{r}
+bed_cols <- c('region', 'start', 'end', 'gene_name', 'score', 'strand')
+last_cols <- c('query', 'reference', 'pct_identity', 'aln_length', 'mismatches',
+               'gap_opens', 'q_start', 'q_end', 'ref_start', 'ref_end', 'evalue', 'bitscore')
+
+inc_bed <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_incerta.bed'), 
+                    col_types = cols(), col_names = bed_cols)
+sch_bed <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri.bed'), 
+                    col_types = cols(), col_names = bed_cols)
+
+inc_last <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_incerta.last.filtered'), 
+                     col_types = cols(), col_names = last_cols)
+sch_last <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri.last.filtered'), 
+                     col_types = cols(), col_names = last_cols)
+
+gene_lookup <- read_tsv(here('data/NameTranslation_corrected.txt'), col_types = cols())
+```
+
+
+## Creating bed lookups
+
+The coords in the alignment files are zero-based, which means we can directly
+add genomic coords to them.
+
+Also need to account for the fact that mtMinus has a separate set of coords -
+its start is listed as 39982 here, but in the actual context of chr6 
+(see `data/references/chr6_mtMinus_full.gff`) it starts at 336959.
+
+First, creating a 'side-by-side' bed file that reflects gene matches:
+
+```{r}
+# incerta
+inc_lookup <- inc_last %>% select(gene_name = query, orth_name = reference)
+
+inc_bed_minus <- filter(inc_bed, region == 'chromosome_6')
+inc_bed_inc <- inc_bed %>% 
+  filter(region == 'C0033') %>% 
+  select(orth_name = gene_name, orth_start = start, 
+         orth_end = end, orth_strand = strand)
+
+# no secondary alignments - final file
+inc_bed_final <- inc_bed_minus %>% 
+  left_join(inc_lookup, by = 'gene_name') %>% 
+  left_join(inc_bed_inc, by = 'orth_name') %>% 
+  filter(!is.na(orth_name)) %>% 
+  select(-region)
+
+# schloesseri
+sch_lookup <- sch_last %>% select(gene_name = query, orth_name = reference)
+
+sch_bed_minus <- filter(sch_bed, region == 'chromosome_6')
+sch_bed_sch <- sch_bed %>% 
+  filter(region == 'C0045') %>% 
+  select(orth_name = gene_name, orth_start = start, 
+         orth_end = end, orth_strand = strand)
+
+sch_bed_final <- sch_bed_minus %>% 
+  left_join(sch_lookup, by = 'gene_name') %>% 
+  left_join(sch_bed_sch, by = 'orth_name') %>% 
+  filter(!is.na(orth_name)) %>% 
+  select(-region)
+#   mutate(start = start + 336959 - 39982,
+         # end = end + 336959 - 39982)
+
+# remove secondary alignments - see log 12/5/2020
+sch_bed_final <- sch_bed_final %>% 
+  filter(!orth_name %in% c('g2041.t1', 'g2108.t1')) # genes matching SPP3 and LPS1
+```
+
+
+## Combining bed file coordinates with alignments
+
+The LAST documentation mentioned that start coordinates are zero based, but
+that seems to not be the case in this dataset? Perhaps JCVI converts coords to
+a 1-based system? In either case, an offset of 1 shouldn't affect the plots,
+so we should be fine. 
+
+```{r}
+inc_last_final <- inc_last %>% 
+  rename(
+    gene_name = query, orth_name = reference
+  ) %>% 
+  left_join(
+    inc_bed_final,
+    by = c('gene_name', 'orth_name')
+  ) %>% 
+  mutate(
+    q_start = start,
+    q_end = end,
+    ref_start = orth_start,
+    ref_end = orth_end) %>%
+  mutate(
+    q_start_alt = ifelse(strand == '-', q_end, NA),
+    q_end_alt = ifelse(strand == '-', q_start, NA),
+    ref_start_alt = ifelse(orth_strand == '-', ref_end, NA),
+    ref_end_alt = ifelse(orth_strand == '-', ref_start, NA)
+  ) %>% 
+  mutate(
+    q_start = ifelse(is.na(q_start_alt), q_start, q_start_alt),
+    q_end = ifelse(is.na(q_end_alt), q_end, q_end_alt),
+    ref_start = ifelse(is.na(ref_start_alt), ref_start, ref_start_alt),
+    ref_end = ifelse(is.na(ref_end_alt), ref_end, ref_end_alt)
+  ) %>% 
+  select(-ends_with('alt'))
+
+sch_last_final <- sch_last %>% 
+  rename(
+    gene_name = query, orth_name = reference
+  ) %>% 
+  left_join(
+    sch_bed_final,
+    by = c('gene_name', 'orth_name')
+  ) %>% 
+  mutate(
+    q_start = start, 
+    q_end = end,
+    ref_start = orth_start,
+    ref_end = orth_end) %>% 
+  mutate(
+    q_start_alt = ifelse(strand == '-', q_end, NA),
+    q_end_alt = ifelse(strand == '-', q_start, NA),
+    ref_start_alt = ifelse(orth_strand == '-', ref_end, NA),
+    ref_end_alt = ifelse(orth_strand == '-', ref_start, NA)
+  ) %>% 
+  mutate(
+    q_start = ifelse(is.na(q_start_alt), q_start, q_start_alt),
+    q_end = ifelse(is.na(q_end_alt), q_end, q_end_alt),
+    ref_start = ifelse(is.na(ref_start_alt), ref_start, ref_start_alt),
+    ref_end = ifelse(is.na(ref_end_alt), ref_end, ref_end_alt)
+  ) %>% 
+  select(-ends_with('alt'))
+
+
+```
+
+
+## Plotting
+
+```{r}
+dotplot_theme <- function(font_size = 12) {
+  theme(
+    panel.background = element_blank(),
+    axis.text = element_text(family = 'Helvetica', color = 'black', size = font_size),
+    axis.title = element_text(family = 'Helvetica', size = font_size),
+    panel.border = element_rect(color = 'black', fill = NA, size = 1),
+    panel.grid = element_blank()
+    # panel.grid.major = element_line(size = 0.2, color = 'dark grey'),
+    # panel.grid.minor = element_blank(), panel.ontop = TRUE
+  )
+}
+
+mt_locus_guide <- list(
+  geom_rect(aes(xmin = 337.125, xmax = 421.995, ymin = -200, ymax = 1400),  # 0-175k in bed - previously 473000
+            color = '#eaecef', fill = '#eaecef'),
+  geom_rect(aes(xmin = 421.995, xmax = 636.724, ymin = -200, ymax = 1400),
+            color = '#d9dce0', fill = '#d9dce0'),
+  geom_rect(aes(xmin = 636.724, xmax = 762.679, ymin = -200, ymax = 1400), 
+            color = '#eaecef', fill = '#eaecef'),
+  annotate('text', label = 'T', x = 380, y = 1150, size = 7),
+  annotate('text', label = 'R', x = 530, y = 1150, size = 7),
+  annotate('text', label = 'C', x = 700, y = 1150, size = 7)
+)
+
+inc_plot <- inc_last_final %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>% 
+  mutate(q_start = q_start / 1000,
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>% 
+ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_inversion)) +
+  mt_locus_guide +
+  geom_segment(size = 0.9) +
+  labs(
+    x = 'C. reinhardtii chromosome 6 position (kb)',
+    y = 'C. incerta C0033\n position (kb)'
+  ) +
+  dotplot_theme(12) +
+  coord_cartesian(x = c(0, 1000), y = c(0, 1250)) +
+  guides(color = FALSE) +
+  scale_color_manual(values = c('black', 'dodger blue')) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+inc_plot
+```
+
+
+The schloesseri contig is inverted in full compared to reinhardtii due to how the assembly panned out -
+the orientation there is arbitrary. C0045 is 920969 bp long - will have to reflect points across x = ~461. 
+
+```{r}
+sch_plot <- sch_last_final %>% 
+  filter(!is.na(q_start)) %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '1', '0')) %>% # reversed due to reflection
+  mutate(q_start = q_start / 1000, # reflect points along 'midpoint' line - ~462 kb
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>%
+  mutate(ref_start = ref_start - 461,
+         ref_end = ref_end - 461) %>%
+  mutate(ref_start = ref_start * -1,
+         ref_end = ref_end * -1) %>%
+  mutate(ref_start = ref_start + 461, ref_end = ref_end + 461) %>% 
+ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_inversion)) +
+  mt_locus_guide +
+  geom_segment(size = 0.9) +
+  labs(
+    x = 'C. reinhardtii chromosome 6 position (kb)',
+    y = 'C. schloesseri C0045\n position (kb)'
+  ) +
+  dotplot_theme(12) +
+  coord_cartesian(x = c(0, 1000), y = c(0, 1250)) +
+  guides(color = FALSE) +
+  scale_color_manual(values = c('black', 'dodger blue'))
+
+sch_plot
+```
+
+
+## Final plot
+
+```{r}
+final_plot <- inc_plot + sch_plot + plot_layout(ncol = 1)
+
+final_plot
+```
+
+```{r}
+ggsave(here('synteny_plot.pdf'), plot = final_plot)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
