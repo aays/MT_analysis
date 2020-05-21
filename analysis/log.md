@@ -1356,6 +1356,9 @@ chr6_mtMinus_4m C_schloesseri --cscore=.99
 porting the files to `data/jcvi-files`:
 
 ```bash
+cat chr6_mtMinus_4m.bed C_incerta.bed > chr6_mtMinus_4m.C_incerta.bed
+cat chr6_mtMinus_4m.bed C_schloesseri.bed > chr6_mtMinus_4m.C_schloesseri.bed
+
 cp -v chr6_mtMinus_4m.C_incerta.bed ../data/jcvi-files
 cp -v chr6_mtMinus_4m.C_incerta.last.filtered ../data/jcvi-files
 cp -v chr6_mtMinus_4m.C_schloesseri.bed ../data/jcvi-files
