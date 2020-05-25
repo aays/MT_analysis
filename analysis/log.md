@@ -1365,5 +1365,164 @@ cp -v chr6_mtMinus_4m.C_schloesseri.bed ../data/jcvi-files
 cp -v chr6_mtMinus_4m.C_schloesseri.last.filtered ../data/jcvi-files
 ```
 
+## 25/5/2020
+
+I goofed! I goofed so hard making `chr6_mtMinus_full.gff` (see 17/2 log)
+
+the offset is incorrect - instead of doing 943k - 462k, I have to start the gene
+after MAT3 at the same distance (?) downstream _relative_ to MAT3 that it is
+in the MT+ file, which the previous method did not do - leading to the gene
+immediately after it being at like 462k instead of being greater than
+the MAT3 end coord of ~759k
+
+the *actual* offset post-MAT3 is 943474 - (759048 + 3) = 184423, since the next gene
+starts just 3 bp downstream at 943477 in MT+
+
+this code should handle the offset correctly:
+
+```python
+from tqdm import tqdm
+chr6_fname = 'data/references/chr6.gff'
+mtminus_fname = 'data/references/mtMinus_C_noM.gff'
+outname = 'data/references/chr6_mtMinus_full.gff' # will make subset later
+with open(outname, 'w') as f_out:
+    with open(chr6_fname, 'r') as f_chr:
+        with open(mtminus_fname, 'r') as f_mt:
+            counter = 0
+            for line in tqdm(f_chr):
+                if not 'mRNA' in line:
+                    continue
+                sp = line.rstrip().split('\t')
+                start, end = int(sp[3]), int(sp[4])
+                if start < 336959: # NIC7 start
+                    f_out.write(line)
+                elif start >= 336959 and end <= 943474:
+                    for mt_line in f_mt:
+                        sp_mt = mt_line.rstrip().split('\t')
+                        if len(sp_mt[-1].split(';')) == 2:
+                            sp_mt[-1] = sp_mt[-1].replace('ID=', 'ness_ID=') # C domain genes
+                        m_start, m_end = int(sp_mt[3]) + 296976, int(sp_mt[4]) + 296976
+                        m_start, m_end = str(m_start), str(m_end)
+                        sp_out = '\t'.join(['chromosome_6', 'phytozome8_0', 'mRNA']) + '\t'
+                        sp_out += '\t'.join([m_start, m_end] + sp_mt[5:])
+                        sp_out += '\n'
+                        f_out.write(sp_out)
+                        counter += 1
+                elif start > 943474:
+                    sp = line.rstrip().split('\t')
+                    e_start, e_end = int(sp[3]) - 184423, int(sp[4]) - 184423
+                    e_start, e_end = str(e_start), str(e_end)
+                    sp_out = '\t'.join(sp[:3] + [e_start, e_end] + sp[5:]) + '\n'
+                    f_out.write(sp_out)
+
+```
+
+remaking the gff:
+
+```bash
+awk '{ if($5 <= 4000000) { print }}' data/references/chr6_mtMinus_full.gff > data/references/chr6_mtMinus_4m.gff
+```
+
+rerunning 16/5 commands:
+
+```python
+from tqdm import tqdm
+from Bio import SeqIO
+seq_file = 'data/fastas-nuc/Creinhardtii_v5.3_223_cds.fa'
+seqs = {}
+for record in tqdm(SeqIO.parse(seq_file, 'fasta')):
+    pacid = str(record.id).split('|')[1].lstrip('PACid:')
+    seqs[pacid] = str(record.seq)
+with open('data/fastas-nuc/chr6_4m_minus_temp.fasta', 'w') as f_out:
+    with open('data/references/chr6_mtMinus_full.gff', 'r') as f:
+        for line in tqdm(f):
+            if 'ID=PAC:' not in line:
+                continue # will append mtMinus_CDS.fasta to get these
+            sp = line.rstrip().split('\t')
+            chrom, type, end, info = sp[0], sp[2], int(sp[4]), sp[8]
+            if end > 3993587:
+                print(end)
+                break
+            gene_id = info.split(';')[0].lstrip('ID=PAC:')
+            if gene_id in seqs:
+                f_out.write('>' + gene_id + '\n')
+                f_out.write(seqs[gene_id] + '\n')
+
+```
+
+and then:
+
+```bash
+cd data/fastas-nuc
+cat chr6_4m_minus_temp.fasta mtMinus_CDS.fasta > chr6_4m_minus.fasta
+rm chr6_4m_minus_temp.fasta
+grep -c '>' chr6_4m_minus.fasta # 781 genes! 
+
+cd ../../jcvi
+python2.7 -m jcvi.formats.gff bed --type=mRNA \
+--key=ness_ID ../data/references/chr6_mtMinus_4m.gff \
+-o chr6_mtMinus_4m_temp.bed
+
+python2.7 -m jcvi.formats.fasta format \
+../data/fastas-nuc/chr6_4m_minus.fasta \
+chr6_mtMinus_4m.cds
+```
+
+cleaning the gene names:
+
+```python
+import re
+from copy import deepcopy
+from tqdm import tqdm
+import csv
+fname = 'jcvi/chr6_mtMinus_4m_temp.bed'
+outname = 'jcvi/chr6_mtMinus_4m.bed'
+with open(fname, 'r') as f_in:
+    fieldnames = ['chrom', 'start', 'end', 'gene', 'score', 'strand']
+    reader = csv.DictReader(f_in, fieldnames=fieldnames, delimiter='\t')
+    with open(outname, 'w') as f_out:
+        writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
+        for line in tqdm(reader):
+            line_out = deepcopy(line)
+            if 'ADF' in line['gene']:
+                line_out['gene'] = re.search('(ADF[0-9]+)', line['gene']).group(1)
+                writer.writerow(line_out)
+            else:
+                writer.writerow(line_out)
+```
+
+redoing alignments:
+
+
+```bash
+time python2.7 -m jcvi.compara.catalog ortholog \
+chr6_mtMinus_4m C_incerta --cscore=.99
+
+time python2.7 -m jcvi.compara.catalog ortholog \
+chr6_mtMinus_4m C_schloesseri --cscore=.99
+```
+
+replacing the files in `data/jcvi-files`:
+
+```bash
+rm data/jcvi-files/chr6_mtMinus_4m.C_*
+
+cd jcvi/
+cat chr6_mtMinus_4m.bed C_incerta.bed > chr6_mtMinus_4m.C_incerta.bed
+cat chr6_mtMinus_4m.bed C_schloesseri.bed > chr6_mtMinus_4m.C_schloesseri.bed
+
+cp -v chr6_mtMinus_4m.C_incerta.bed ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_incerta.last.filtered ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_schloesseri.bed ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_schloesseri.last.filtered ../data/jcvi-files
+```
+
+
+
+
+
+
+
+
 
 
