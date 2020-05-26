@@ -1417,6 +1417,64 @@ with open(outname, 'w') as f_out:
 
 ```
 
+another issue is that `data/fastas-nus/mtMinus_CDS.fasta` is actually missing 20 genes,
+all from the C domain - this is because these genes don't have ADF names, and whatever
+code I wrote earlier to get these didn't account for that and just skipped over them (only
+grabbing the remaining 41)
+
+let's create a new `mtMinus_CDS.fasta` off of `mtMinus_CDS_named.fasta`, which actually
+contains all 61 genes
+
+(had to manually add MTD1 and MID)
+
+```python
+name_dict = {}
+fname = 'data/NameTranslation_corrected.txt'
+with open(fname, 'r') as f:
+    for line in f:
+        if line.startswith('DOMAIN'):
+            continue
+        sp = line.split('\t')
+        names = [n.rstrip('\n') for n in sp[2:]]
+        names = [n for n in names if n]
+        name_dict[sp[1]] = names
+name_dict['155027'] = ['ADF43182.1'] # manual fix
+
+from Bio import SeqIO
+ref_file = 'data/fastas-nuc/mtMinus_CDS_named.fasta'
+out_file = 'data/fastas-nuc/mtMinus_CDS_full.fasta'
+
+with open(out_file, 'w') as f:
+    for record in SeqIO.parse(ref_file, 'fasta'):
+        alt_names = name_dict[str(record.id)]
+        has_adf = any('ADF' in name for name in alt_names)
+        if has_adf:
+            for alt_name in alt_names:
+                if 'ADF' in alt_name:
+                    final_name = alt_name
+                    if final_name.endswith('.1'):
+                        final_name = final_name[:-1]
+                    continue
+                else:
+                    continue
+        elif not has_adf:
+            assert len(alt_names) == 1
+            alt_name = alt_names[0]
+        f.write('>' + alt_name + '\n')
+        f.write(str(record.seq) + '\n')
+                
+# checking that no two sequences are the same:
+
+for record1 in SeqIO.parse(out_file, 'fasta'):
+    for record2 in SeqIO.parse(out_file, 'fasta'):
+        if str(record1.id) != str(record2.id):
+            if str(record1.seq) == str(record2.seq)
+            print('oh no')
+            print(record1.id, record2.id) # no output - looks good
+
+```
+
+
 remaking the gff:
 
 ```bash
@@ -1454,9 +1512,9 @@ and then:
 
 ```bash
 cd data/fastas-nuc
-cat chr6_4m_minus_temp.fasta mtMinus_CDS.fasta > chr6_4m_minus.fasta
+cat chr6_4m_minus_temp.fasta mtMinus_CDS_full.fasta > chr6_4m_minus.fasta
 rm chr6_4m_minus_temp.fasta
-grep -c '>' chr6_4m_minus.fasta # 781 genes! 
+grep -c '>' chr6_4m_minus.fasta # 801 genes! 
 
 cd ../../jcvi
 python2.7 -m jcvi.formats.gff bed --type=mRNA \
