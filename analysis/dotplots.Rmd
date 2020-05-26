@@ -159,7 +159,8 @@ dotplot_theme <- function(font_size = 12) {
     axis.text = element_text(family = 'Helvetica', color = 'black', size = font_size),
     axis.title = element_text(family = 'Helvetica', size = font_size),
     panel.border = element_rect(color = 'black', fill = NA, size = 1),
-    panel.grid = element_blank()
+    panel.grid = element_blank(),
+    plot.tag = element_text(family = 'Helvetica', face = 'bold', size = font_size)
     # panel.grid.major = element_line(size = 0.2, color = 'dark grey'),
     # panel.grid.minor = element_blank(), panel.ontop = TRUE
   )
@@ -188,10 +189,11 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
   geom_segment(size = 0.9) +
   labs(
     x = 'C. reinhardtii chromosome 6 position (kb)',
-    y = 'C. incerta C0033\n position (kb)'
+    y = 'C. incerta C0033\n position (kb)',
+    tag = 'A'
   ) +
   dotplot_theme(12) +
-  coord_cartesian(x = c(0, 1000), y = c(0, 1250)) +
+  coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
   guides(color = FALSE) +
   scale_color_manual(values = c('black', 'dodger blue')) +
   theme(axis.title.x = element_blank(),
@@ -222,10 +224,11 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
   geom_segment(size = 0.9) +
   labs(
     x = 'C. reinhardtii chromosome 6 position (kb)',
-    y = 'C. schloesseri C0045\n position (kb)'
+    y = 'C. schloesseri C0045\n position (kb)',
+    tag = 'B'
   ) +
   dotplot_theme(12) +
-  coord_cartesian(x = c(0, 1000), y = c(0, 1250)) +
+  coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
   guides(color = FALSE) +
   scale_color_manual(values = c('black', 'dodger blue'))
 
