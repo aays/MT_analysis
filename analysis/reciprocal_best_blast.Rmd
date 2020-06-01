@@ -169,6 +169,38 @@ View(genes_contigs_pos)
 
 ```
 
+### Creating supplementary table
+
+```{r}
+name_translation <- read_tsv(here('data/NameTranslation_corrected.txt')) %>% 
+  select(domain = DOMAIN, gene_name = Common_Name)
+
+
+presence_absence_final <- presence_absence %>% 
+  filter(gene_name != 'SPP3', gene_name != 'ADF43182.1', 
+         gene_name != 'HGRP1', gene_name != 'MTP0796') %>% 
+  mutate(gene_name = ifelse(gene_name == 'SPP1C', 'SPP3', gene_name)) %>% 
+  mutate(
+    C_incerta = ifelse(C_incerta == 'C0033', 'C0033 (MT)', C_incerta),
+    C_schloesseri = ifelse(C_schloesseri == 'C0045', 'C0045 (MT)', C_schloesseri)
+  ) %>% 
+  left_join(name_translation, by = c('gene_name')) %>% 
+  arrange(desc(domain)) %>% 
+  select(gene_name, domain, everything()) %>% 
+  rename(
+    Gene = gene_name,
+    `C. reinhardtii domain` = domain,
+    `C. incerta contig` = C_incerta,
+    `C. schloesseri contig` = C_schloesseri,
+    `E. debaryana contig` = E_debaryana
+  )
+
+presence_absence_final
+
+# write_csv(presence_absence_final, here('data/presence_absence_suppl.csv'))
+```
+
+
 
 ## Table for comparison with tblastn results
 

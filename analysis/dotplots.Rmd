@@ -160,7 +160,7 @@ dotplot_theme <- function(font_size = 12) {
     axis.title = element_text(family = 'Helvetica', size = font_size),
     panel.border = element_rect(color = 'black', fill = NA, size = 1),
     panel.grid = element_blank(),
-    plot.tag = element_text(family = 'Helvetica', face = 'bold', size = font_size)
+    plot.tag = element_text(family = 'Helvetica', face = 'bold', size = 12)
     # panel.grid.major = element_line(size = 0.2, color = 'dark grey'),
     # panel.grid.minor = element_blank(), panel.ontop = TRUE
   )
@@ -192,7 +192,7 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
     y = 'C. incerta C0033\n position (kb)',
     tag = 'A'
   ) +
-  dotplot_theme(12) +
+  dotplot_theme(10) +
   coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
   guides(color = FALSE) +
   scale_color_manual(values = c('black', 'dodger blue')) +
@@ -227,7 +227,7 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
     y = 'C. schloesseri C0045\n position (kb)',
     tag = 'B'
   ) +
-  dotplot_theme(12) +
+  dotplot_theme(10) +
   coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
   guides(color = FALSE) +
   scale_color_manual(values = c('black', 'dodger blue'))
@@ -246,6 +246,7 @@ final_plot
 
 ```{r}
 ggsave(here('synteny_plot.pdf'), plot = final_plot)
+ggsave(here('synteny_plot.eps'), plot = final_plot)
 ```
 
 
