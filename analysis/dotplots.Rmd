@@ -188,9 +188,9 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
   mt_locus_guide +
   geom_segment(size = 0.9) +
   labs(
-    x = 'C. reinhardtii chromosome 6 position (kb)',
-    y = 'C. incerta C0033\n position (kb)',
-    tag = 'A'
+    x = expression(paste(italic('C. reinhardtii'), ' chromosome 6 position (kb)')),
+    y = expression(paste(italic('C. incerta'), ' C0033 position (kb)')),
+    tag = 'a)'
   ) +
   dotplot_theme(10) +
   coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
@@ -223,9 +223,9 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
   mt_locus_guide +
   geom_segment(size = 0.9) +
   labs(
-    x = 'C. reinhardtii chromosome 6 position (kb)',
-    y = 'C. schloesseri C0045\n position (kb)',
-    tag = 'B'
+    x = expression(paste(italic('C. reinhardtii'), ' chromosome 6 position (kb)')),
+    y = expression(paste(italic('C. schloesseri'), ' C0045 position (kb)')),
+    tag = 'b)'
   ) +
   dotplot_theme(10) +
   coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
@@ -245,11 +245,48 @@ final_plot
 ```
 
 ```{r}
-ggsave(here('synteny_plot.pdf'), plot = final_plot)
-ggsave(here('synteny_plot.eps'), plot = final_plot)
+ggsave(here('synteny_plot.pdf'), plot = final_plot, width = 4.2, height = 7)
+ggsave(here('synteny_plot.eps'), plot = final_plot, width = 4.2, height = 7)
 ```
 
 
+## MT lengths
+
+```{r}
+name_translation <- read_tsv(here('data/NameTranslation_corrected.txt')) %>% 
+  mutate(gene_name = ifelse(
+    is.na(mtMinus_Ness_ID), ch6_Ness_ID, str_replace(mtMinus_Ness_ID, '\\.1$', ''))) %>% 
+  mutate(in_MT = 1)
+
+inc <- inc_last_final %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>% 
+  mutate(q_start = q_start / 1000,
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>% 
+  left_join(name_translation, by = 'gene_name') %>% 
+  filter(in_MT == 1) %>% 
+  arrange(ref_start)
+  
+
+sch <- sch_last_final %>% 
+  filter(!is.na(q_start)) %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '1', '0')) %>% # reversed due to reflection
+  mutate(q_start = q_start / 1000, # reflect points along 'midpoint' line - ~462 kb
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>%
+  mutate(ref_start = ref_start - 461,
+         ref_end = ref_end - 461) %>%
+  mutate(ref_start = ref_start * -1,
+         ref_end = ref_end * -1) %>%
+  mutate(ref_start = ref_start + 461, ref_end = ref_end + 461) %>% 
+  left_join(name_translation, by = 'gene_name') %>% 
+  filter(in_MT == 1) %>% 
+  arrange(ref_start)
+
+
+```
 
 
 
