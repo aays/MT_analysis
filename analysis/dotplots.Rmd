@@ -21,12 +21,12 @@ last_cols <- c('query', 'reference', 'pct_identity', 'aln_length', 'mismatches',
 
 inc_bed <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_incerta.bed'), 
                     col_types = cols(), col_names = bed_cols)
-sch_bed <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri.bed'), 
+sch_bed <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri_extended.bed'), 
                     col_types = cols(), col_names = bed_cols)
 
 inc_last <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_incerta.last.filtered'), 
                      col_types = cols(), col_names = last_cols)
-sch_last <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri.last.filtered'), 
+sch_last <- read_tsv(here('data/jcvi-files/chr6_mtMinus_4m.C_schloesseri_extended.last.filtered'), 
                      col_types = cols(), col_names = last_cols)
 
 gene_lookup <- read_tsv(here('data/NameTranslation_corrected.txt'), col_types = cols())
@@ -66,7 +66,7 @@ sch_lookup <- sch_last %>% select(gene_name = query, orth_name = reference)
 
 sch_bed_minus <- filter(sch_bed, region == 'chromosome_6')
 sch_bed_sch <- sch_bed %>% 
-  filter(region == 'C0045') %>% 
+  filter(region == 'C0105+C0045') %>% 
   select(orth_name = gene_name, orth_start = start, 
          orth_end = end, orth_strand = strand)
 
@@ -146,6 +146,33 @@ sch_last_final <- sch_last %>%
   ) %>% 
   select(-ends_with('alt'))
 
+sch_last_extended_final <- sch_last_extended %>% 
+  rename(
+    gene_name = query, orth_name = reference
+  ) %>% 
+  left_join(
+    sch_bed_extended_final,
+    by = c('gene_name', 'orth_name')
+  ) %>% 
+  mutate(
+    q_start = start, 
+    q_end = end,
+    ref_start = orth_start,
+    ref_end = orth_end) %>% 
+  mutate(
+    q_start_alt = ifelse(strand == '-', q_end, NA),
+    q_end_alt = ifelse(strand == '-', q_start, NA),
+    ref_start_alt = ifelse(orth_strand == '-', ref_end, NA),
+    ref_end_alt = ifelse(orth_strand == '-', ref_start, NA)
+  ) %>% 
+  mutate(
+    q_start = ifelse(is.na(q_start_alt), q_start, q_start_alt),
+    q_end = ifelse(is.na(q_end_alt), q_end, q_end_alt),
+    ref_start = ifelse(is.na(ref_start_alt), ref_start, ref_start_alt),
+    ref_end = ifelse(is.na(ref_end_alt), ref_end, ref_end_alt)
+  ) %>% 
+  select(-ends_with('alt'))
+
 
 ```
 
@@ -200,6 +227,30 @@ ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_
         axis.text.x = element_blank())
 
 inc_plot
+
+sch_plot_extended <- sch_last_extended_final %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>% 
+  mutate(q_start = q_start / 1000,
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>% 
+ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_inversion)) +
+  mt_locus_guide +
+  geom_segment(size = 0.9) +
+  labs(
+    x = expression(paste(italic('C. reinhardtii'), ' chromosome 6 position (kb)')),
+    y = expression(paste(italic('C. incerta'), ' C0033 position (kb)')),
+    tag = 'a)'
+  ) +
+  dotplot_theme(10) +
+  coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
+  guides(color = FALSE) +
+  scale_color_manual(values = c('black', 'dodger blue')) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank())
+
+sch_plot_extended
+
 ```
 
 
