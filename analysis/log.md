@@ -1575,6 +1575,60 @@ cp -v chr6_mtMinus_4m.C_schloesseri.bed ../data/jcvi-files
 cp -v chr6_mtMinus_4m.C_schloesseri.last.filtered ../data/jcvi-files
 ```
 
+## 15/6/2020
+
+updating the schloesseri data with C0105 - should cover the area upstream of MT
+
+shouldn't need to do reciprocal blastp again given that no MT hit
+was found on C0105 - this is just an autosomal extension
+
+`C0105_C0045.fa` should just be the two contigs with 5000 Ns between them - will
+need to account for this gap in coords later on
+
+creating jcvi compatible files for these:
+
+```bash
+cd jcvi/
+
+time python2.7 -m jcvi.formats.gff bed --type=mRNA \
+--key=ID ../data/references/C0105_C0045.gff3 \
+-o C_schloesseri_extended.bed
+```
+
+creating a fasta from this:
+
+```python
+from Bio import SeqIO
+from tqdm import tqdm
+fname = '../rory-data/Chlamydomonas_schloesseri.braker2.CDS.fa'
+bed = 'C_schloesseri_extended.bed'
+
+with open(bed, 'r') as f:
+    gene_names = [l.split('\t')[3] for l in f]
+
+with open('C_schloesseri_extended.fasta', 'w') as f:
+    for record in tqdm(SeqIO.parse(fname, 'fasta')):
+        if record.id in gene_names:
+            f.write('>' + record.id + '\n')
+            f.write(str(record.seq) + '\n')
+```
+
+followed by:
+
+```bash
+time python2.7 -m jcvi.formats.fasta format \
+C_schloesseri_extended.fasta \
+C_schloesseri_extended.cds
+
+# alignment
+time python2.7 -m jcvi.compara.catalog ortholog \
+chr6_mtMinus_4m C_schloesseri_extended --cscore=.99
+
+# moving files
+cat chr6_mtMinus_4m.bed C_schloesseri_extended.bed > chr6_mtMinus_4m.C_schloesseri_extended.bed
+cp -v chr6_mtMinus_4m.C_schloesseri_extended.bed ../data/jcvi-files
+cp -v chr6_mtMinus_4m.C_schloesseri_extended.last.filtered ../data/jcvi-files
+```
 
 
 
