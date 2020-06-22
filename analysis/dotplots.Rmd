@@ -264,16 +264,11 @@ inc <- inc_last_final %>%
 
 sch <- sch_last_final %>% 
   filter(!is.na(q_start)) %>% 
-  mutate(is_inversion = ifelse(strand == orth_strand, '1', '0')) %>% # reversed due to reflection
-  mutate(q_start = q_start / 1000, # reflect points along 'midpoint' line - ~462 kb
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>% 
+  mutate(q_start = q_start / 1000, 
          q_end = q_end / 1000,
          ref_start = ref_start / 1000,
          ref_end = ref_end / 1000) %>%
-  mutate(ref_start = ref_start - 461,
-         ref_end = ref_end - 461) %>%
-  mutate(ref_start = ref_start * -1,
-         ref_end = ref_end * -1) %>%
-  mutate(ref_start = ref_start + 461, ref_end = ref_end + 461) %>% 
   left_join(name_translation, by = 'gene_name') %>% 
   filter(in_MT == 1) %>% 
   arrange(ref_start)
