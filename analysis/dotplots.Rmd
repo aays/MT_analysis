@@ -171,7 +171,7 @@ mt_locus_guide <- list(
             color = '#d9dce0', fill = '#d9dce0'),
   geom_rect(aes(xmin = 636.724, xmax = 762.679, ymin = -200, ymax = 1400), 
             color = '#eaecef', fill = '#eaecef'),
-  annotate('text', label = 'T', x = 380, y = 1150, size = 7),
+  annotate('text', label = 'T', x = 375, y = 1150, size = 7),
   annotate('text', label = 'R', x = 530, y = 1150, size = 7),
   annotate('text', label = 'C', x = 700, y = 1150, size = 7)
 )
@@ -201,8 +201,6 @@ inc_plot
 ```
 
 
-The schloesseri contig is inverted in full compared to reinhardtii due to how the assembly panned out -
-the orientation there is arbitrary. C0045 is 920969 bp long - will have to reflect points across x = ~461. 
 
 ```{r}
 sch_plot <- sch_last_final %>% 
@@ -277,9 +275,70 @@ sch <- sch_last_final %>%
 ```
 
 
+## Separate plots (Botany 2020 talk)
 
+```{r}
+mt_locus_guide_bottom <- list(
+  geom_rect(aes(xmin = 337.125, xmax = 421.995, ymin = -200, ymax = 1400),  # 0-175k in bed - previously 473000
+            color = '#eaecef', fill = '#eaecef'),
+  geom_rect(aes(xmin = 421.995, xmax = 636.724, ymin = -200, ymax = 1400),
+            color = '#d9dce0', fill = '#d9dce0'),
+  geom_rect(aes(xmin = 636.724, xmax = 762.679, ymin = -200, ymax = 1400), 
+            color = '#eaecef', fill = '#eaecef'),
+  annotate('text', label = 'T', x = 375, y = 80, size = 7),
+  annotate('text', label = 'R', x = 530, y = 80, size = 7),
+  annotate('text', label = 'C', x = 700, y = 80, size = 7)
+)
 
+inc_plot_indiv <- inc_last_final %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>% 
+  mutate(q_start = q_start / 1000,
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>% 
+ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_inversion)) +
+  mt_locus_guide_bottom +
+  geom_segment(size = 0.9) +
+  labs(
+    x = expression(paste(italic('C. reinhardtii'), ' chromosome 6 position (kb)')),
+    y = expression(paste(italic('C. incerta'), ' C0033 position (kb)'))
+  ) +
+  dotplot_theme(12) +
+  coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
+  guides(color = FALSE) +
+  scale_color_manual(values = c('black', 'dodger blue'))
 
+inc_plot_indiv
+
+sch_plot_indiv <- sch_last_final %>% 
+  filter(!is.na(q_start)) %>% 
+  mutate(is_inversion = ifelse(strand == orth_strand, '0', '1')) %>%
+  mutate(q_start = q_start / 1000,
+         q_end = q_end / 1000,
+         ref_start = ref_start / 1000,
+         ref_end = ref_end / 1000) %>%
+ggplot(aes(x = q_start, xend = q_end, y = ref_start, yend = ref_end, color = is_inversion)) +
+  mt_locus_guide_bottom +
+  geom_segment(size = 0.9) +
+  labs(
+    x = expression(paste(italic('C. reinhardtii'), ' chromosome 6 position (kb)')),
+    y = expression(paste(italic('C. schloesseri'), ' C0045 position (kb)'))
+  ) +
+  dotplot_theme(12) +
+  coord_cartesian(x = c(0, 1250), y = c(0, 1250)) +
+  guides(color = FALSE) +
+  scale_color_manual(values = c('black', 'dodger blue'))
+
+sch_plot_indiv
+
+```
+
+Saving plots:
+
+```{r}
+ggsave(here('Cinc_plot_indiv.png'), plot = inc_plot_indiv, width = par('din')[1] * 0.75, height = par('din')[1] * 0.5)
+ggsave(here('Csch_plot_indiv.png'), plot = sch_plot_indiv, width = par('din')[1] * 0.75, height = par('din')[1] * 0.5)
+```
 
 
 
